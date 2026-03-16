@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -13,8 +12,7 @@ import (
 
 	"ai-product-assistant/config"
 	"ai-product-assistant/internal/server"
-
-	_ "github.com/jackc/pgx/v5/stdlib"
+	"ai-product-assistant/internal/storage/postgres"
 )
 
 func main() {
@@ -36,17 +34,14 @@ func run(logger *slog.Logger) error {
 	logger = newLogger(cfg.AppEnv)
 	slog.SetDefault(logger)
 
-	db, err := sql.Open("pgx", cfg.DatabaseURL)
-	if err != nil {
-		return fmt.Errorf("open postgres: %w", err)
-	}
-	defer db.Close()
-
 	pingCtx, pingCancel := context.WithTimeout(context.Background(), cfg.DBPingTimeout)
 	defer pingCancel()
-	if err := db.PingContext(pingCtx); err != nil {
-		return fmt.Errorf("ping postgres: %w", err)
+
+	db, err := postgres.Open(pingCtx, cfg.DatabaseURL)
+	if err != nil {
+		return err
 	}
+	defer db.Close()
 
 	srv := server.New(server.Config{
 		Address:         cfg.HTTPAddr(),
