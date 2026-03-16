@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	"ai-product-assistant/config"
+	"ai-product-assistant/internal/llm/openai"
 	"ai-product-assistant/internal/server"
 	"ai-product-assistant/internal/storage/postgres"
 )
@@ -42,6 +43,16 @@ func run(logger *slog.Logger) error {
 		return err
 	}
 	defer db.Close()
+
+	llmClient := openai.NewClient(openai.Config{
+		BaseURL:        cfg.LLM.BaseURL,
+		APIKey:         cfg.LLM.APIKey,
+		Model:          cfg.LLM.Model,
+		Timeout:        cfg.LLM.Timeout,
+		MaxRetries:     cfg.LLM.MaxRetries,
+		RetryBaseDelay: cfg.LLM.RetryBaseDelay,
+	})
+	_ = llmClient
 
 	srv := server.New(server.Config{
 		Address:         cfg.HTTPAddr(),
