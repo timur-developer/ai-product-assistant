@@ -7,10 +7,16 @@ import (
 	"fmt"
 
 	"ai-product-assistant/internal/model"
+	"ai-product-assistant/internal/storage/transaction"
 )
 
 type DraftRepository struct {
 	db *sql.DB
+}
+
+type queryer interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 }
 
 func NewDraftRepository(db *sql.DB) *DraftRepository {
@@ -34,8 +40,10 @@ func (r *DraftRepository) CreateDraft(ctx context.Context, input model.CreateDra
 			updated_at
 	`
 
+	q := r.queryer(ctx)
+
 	var draft model.Draft
-	if err := r.db.QueryRowContext(ctx, query, input.RawIdea, input.Language).Scan(
+	if err := q.QueryRowContext(ctx, query, input.RawIdea, input.Language).Scan(
 		&draft.ID,
 		&draft.RawIdea,
 		&draft.Language,
@@ -100,9 +108,11 @@ func (r *DraftRepository) CreateDraftVersion(ctx context.Context, input model.Cr
 		return model.DraftVersion{}, wrapErr(op, err)
 	}
 
+	q := r.queryer(ctx)
+
 	var draftVersion model.DraftVersion
 	var rawContent []byte
-	if err := r.db.QueryRowContext(
+	if err := q.QueryRowContext(
 		ctx,
 		query,
 		input.DraftID,
@@ -149,8 +159,10 @@ func (r *DraftRepository) GetDraftByID(ctx context.Context, draftID int64) (mode
 		WHERE id = $1
 	`
 
+	q := r.queryer(ctx)
+
 	var draft model.Draft
-	if err := r.db.QueryRowContext(ctx, query, draftID).Scan(
+	if err := q.QueryRowContext(ctx, query, draftID).Scan(
 		&draft.ID,
 		&draft.RawIdea,
 		&draft.Language,
@@ -184,9 +196,11 @@ func (r *DraftRepository) GetLatestDraftVersion(ctx context.Context, draftID int
 		LIMIT 1
 	`
 
+	q := r.queryer(ctx)
+
 	var draftVersion model.DraftVersion
 	var rawContent []byte
-	if err := r.db.QueryRowContext(ctx, query, draftID).Scan(
+	if err := q.QueryRowContext(ctx, query, draftID).Scan(
 		&draftVersion.ID,
 		&draftVersion.DraftID,
 		&draftVersion.Version,
@@ -225,7 +239,7 @@ func (r *DraftRepository) ListDrafts(ctx context.Context, input model.ListDrafts
 		LIMIT $1 OFFSET $2
 	`
 
-	rows, err := r.db.QueryContext(ctx, query, input.Limit, input.Offset)
+	rows, err := r.queryer(ctx).QueryContext(ctx, query, input.Limit, input.Offset)
 	if err != nil {
 		return nil, wrapErr(op, err)
 	}
@@ -252,6 +266,14 @@ func (r *DraftRepository) ListDrafts(ctx context.Context, input model.ListDrafts
 	}
 
 	return items, nil
+}
+
+func (r *DraftRepository) queryer(ctx context.Context) queryer {
+	if tx, ok := transaction.FromContext(ctx); ok {
+		return tx
+	}
+
+	return r.db
 }
 
 func wrapErr(op string, err error) error {

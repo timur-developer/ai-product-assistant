@@ -12,8 +12,11 @@ import (
 
 	"ai-product-assistant/config"
 	"ai-product-assistant/internal/llm/openai"
+	"ai-product-assistant/internal/repository"
 	"ai-product-assistant/internal/server"
 	"ai-product-assistant/internal/storage/postgres"
+	"ai-product-assistant/internal/storage/transaction"
+	"ai-product-assistant/internal/usecase"
 )
 
 func main() {
@@ -52,7 +55,25 @@ func run(logger *slog.Logger) error {
 		MaxRetries:     cfg.LLM.MaxRetries,
 		RetryBaseDelay: cfg.LLM.RetryBaseDelay,
 	})
-	_ = llmClient
+
+	draftRepo := repository.NewDraftRepository(db)
+
+	txManager, err := transaction.NewManager(db)
+	if err != nil {
+		return fmt.Errorf("init transaction manager: %w", err)
+	}
+
+	draftService, err := usecase.NewService(
+		draftRepo,
+		llmClient,
+		txManager,
+		"openai",
+		cfg.LLM.Model,
+	)
+	if err != nil {
+		return fmt.Errorf("init draft service: %w", err)
+	}
+	_ = draftService
 
 	srv := server.New(server.Config{
 		Address:         cfg.HTTPAddr(),
