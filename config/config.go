@@ -19,6 +19,8 @@ const (
 	defaultLLMTimeout      = 15 * time.Second
 	defaultLLMMaxRetries   = 2
 	defaultLLMRetryDelay   = 200 * time.Millisecond
+	defaultRateLimitRPM    = 20
+	defaultRateLimitWindow = 60 * time.Second
 )
 
 type Config struct {
@@ -33,6 +35,8 @@ type Config struct {
 	IdleTimeout     time.Duration
 	ShutdownTimeout time.Duration
 	DBPingTimeout   time.Duration
+	RateLimitRPM    int
+	RateLimitWindow time.Duration
 }
 
 type LLMConfig struct {
@@ -59,9 +63,9 @@ func Load() (Config, error) {
 	}
 
 	cfg := Config{
-		AppEnv:          getEnv("APP_ENV", defaultAppEnv),
-		HTTPPort:        getEnv("HTTP_PORT", defaultHTTPPort),
-		DatabaseURL:     os.Getenv("DATABASE_URL"),
+		AppEnv:      getEnv("APP_ENV", defaultAppEnv),
+		HTTPPort:    getEnv("HTTP_PORT", defaultHTTPPort),
+		DatabaseURL: os.Getenv("DATABASE_URL"),
 		LLM: LLMConfig{
 			BaseURL:        os.Getenv("LLM_BASE_URL"),
 			APIKey:         os.Getenv("LLM_API_KEY"),
@@ -75,6 +79,8 @@ func Load() (Config, error) {
 		IdleTimeout:     getEnvDurationSeconds("HTTP_IDLE_TIMEOUT_SEC", defaultIdleTimeout),
 		ShutdownTimeout: getEnvDurationSeconds("HTTP_SHUTDOWN_TIMEOUT_SEC", defaultShutdownTimeout),
 		DBPingTimeout:   getEnvDurationSeconds("DB_PING_TIMEOUT_SEC", defaultDBPingTimeout),
+		RateLimitRPM:    getEnvInt("HTTP_RATE_LIMIT_RPM", defaultRateLimitRPM),
+		RateLimitWindow: getEnvDurationSeconds("HTTP_RATE_LIMIT_WINDOW_SEC", defaultRateLimitWindow),
 	}
 
 	if cfg.DatabaseURL == "" {

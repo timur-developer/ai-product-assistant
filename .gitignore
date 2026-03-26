@@ -1,2 +1,26 @@
-# Goland IDE files
+# IDE
 .idea/
+*.swp
+*.swo
+*~
+.vscode/
+
+# Build artifacts
+*.exe
+*.dll
+*.so
+*.dylib
+app
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/

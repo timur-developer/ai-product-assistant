@@ -73,15 +73,19 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("init draft service: %w", err)
 	}
-	_ = draftService
 
-	srv := server.New(server.Config{
+	srv, err := server.New(server.Config{
 		Address:         cfg.HTTPAddr(),
 		ReadTimeout:     cfg.ReadTimeout,
 		WriteTimeout:    cfg.WriteTimeout,
 		IdleTimeout:     cfg.IdleTimeout,
 		ShutdownTimeout: cfg.ShutdownTimeout,
-	})
+		RateLimitRPM:    cfg.RateLimitRPM,
+		RateLimitWindow: cfg.RateLimitWindow,
+	}, draftService)
+	if err != nil {
+		return fmt.Errorf("init server: %w", err)
+	}
 
 	serverErr := make(chan error, 1)
 	go func() {

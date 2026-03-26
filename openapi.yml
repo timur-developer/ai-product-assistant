@@ -1,0 +1,467 @@
+openapi: 3.0.0
+info:
+  title: AI Product Assistant API
+  description: HTTP API для структурирования продуктовых идей с использованием LLM
+  version: 1.0.0
+  contact:
+    name: Development Team
+
+servers:
+  - url: http://localhost:8080
+    description: Local development
+  - url: https://api.example.com
+    description: Production
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      description: Проверка живого состояния сервиса
+      operationId: getHealth
+      tags:
+        - System
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+              example:
+                status: ok
+
+  /ready:
+    get:
+      summary: Readiness check
+      description: Проверка готовности сервиса к обработке запросов
+      operationId: getReady
+      tags:
+        - System
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ready
+              example:
+                status: ready
+
+  /drafts/generate:
+    post:
+      summary: Generate draft
+      description: Генерирует структурированный черновик из сырого описания идеи
+      operationId: generateDraft
+      tags:
+        - Drafts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerateDraftRequest'
+      responses:
+        '201':
+          description: Draft created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DraftResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /drafts:
+    get:
+      summary: List drafts
+      description: Получает список всех черновиков с пагинацией
+      operationId: listDrafts
+      tags:
+        - Drafts
+      parameters:
+        - name: limit
+          in: query
+          description: Максимальное количество элементов в ответе
+          schema:
+            type: integer
+            default: 10
+            minimum: 0
+        - name: offset
+          in: query
+          description: Смещение от начала списка
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+      responses:
+        '200':
+          description: List of drafts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListDraftsResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /drafts/{id}:
+    get:
+      summary: Get draft by ID
+      description: Получает черновик по идентификатору с последней версией
+      operationId: getDraftById
+      tags:
+        - Drafts
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID черновика
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      responses:
+        '200':
+          description: Draft found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DraftResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /drafts/{id}/refine:
+    post:
+      summary: Refine draft
+      description: Доработчивает выбранные секции черновика и создает новую версию
+      operationId: refineDraft
+      tags:
+        - Drafts
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID черновика
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefineDraftRequest'
+      responses:
+        '200':
+          description: Draft refined successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DraftResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  schemas:
+    GenerateDraftRequest:
+      type: object
+      required:
+        - raw_idea
+        - language
+      properties:
+        raw_idea:
+          type: string
+          description: Сырое описание продуктовой идеи (максимум 4000 символов)
+          maxLength: 4000
+          example: Мобильное приложение для отслеживания расходов с AI-ассистентом
+        language:
+          type: string
+          description: Язык обработки (только 'ru')
+          enum:
+            - ru
+          example: ru
+
+    RefineDraftRequest:
+      type: object
+      required:
+        - sections
+        - language
+      properties:
+        sections:
+          type: array
+          description: Список секций для доработки
+          minItems: 1
+          items:
+            type: string
+            enum:
+              - summary
+              - audience
+              - value
+              - scenarios
+              - constraints
+              - risks
+              - questions
+          example:
+            - summary
+            - value
+            - risks
+        language:
+          type: string
+          description: Язык обработки (только 'ru')
+          enum:
+            - ru
+          example: ru
+
+    DraftContent:
+      type: object
+      properties:
+        summary:
+          type: string
+          description: Резюме идеи
+        audience:
+          type: string
+          description: Целевая аудитория
+        value:
+          type: string
+          description: Ценность для пользователя
+        scenarios:
+          type: array
+          items:
+            type: string
+          description: Сценарии использования
+        constraints:
+          type: array
+          items:
+            type: string
+          description: Ограничения и условия
+        risks:
+          type: array
+          items:
+            type: string
+          description: Потенциальные риски
+        questions:
+          type: array
+          items:
+            type: string
+          description: Вопросы на уточнение
+
+    LLMUsage:
+      type: object
+      properties:
+        prompt_tokens:
+          type: integer
+          description: Количество токенов в запросе
+        completion_tokens:
+          type: integer
+          description: Количество токенов в ответе
+        total_tokens:
+          type: integer
+          description: Общее количество токенов
+
+    DraftVersion:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: ID версии
+        draft_id:
+          type: integer
+          format: int64
+          description: ID черновика
+        version:
+          type: integer
+          description: Номер версии
+        content:
+          $ref: '#/components/schemas/DraftContent'
+        provider:
+          type: string
+          description: LLM провайдер
+          example: openai
+        model_name:
+          type: string
+          description: Наименование модели
+          example: gpt-4
+        usage:
+          $ref: '#/components/schemas/LLMUsage'
+        created_at:
+          type: string
+          format: date-time
+          description: Время создания версии
+
+    DraftResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: ID черновика
+        raw_idea:
+          type: string
+          description: Исходное описание идеи
+        language:
+          type: string
+          description: Язык обработки
+        latest_version:
+          type: integer
+          description: Номер последней версии
+        created_at:
+          type: string
+          format: date-time
+          description: Время создания черновика
+        updated_at:
+          type: string
+          format: date-time
+          description: Время последнего обновления
+        version:
+          $ref: '#/components/schemas/DraftVersion'
+
+    DraftListItem:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        raw_idea:
+          type: string
+        language:
+          type: string
+        latest_version:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ListDraftsResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/DraftListItem'
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              description: Код ошибки
+              enum:
+                - invalid_request
+                - not_found
+                - conflict
+                - provider_failed
+                - rate_limited
+                - internal_error
+            message:
+              type: string
+              description: Понятное описание ошибки
+
+  responses:
+    BadRequest:
+      description: Bad Request - Ошибка валидации входных данных
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: invalid_request
+              message: raw_idea is required
+
+    NotFound:
+      description: Not Found - Ресурс не найден
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: not_found
+              message: draft not found
+
+    Conflict:
+      description: Conflict - Черновик был обновлен, повторите попытку
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: conflict
+              message: conflict
+
+    TooManyRequests:
+      description: Too Many Requests - Превышен лимит запросов
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: rate_limited
+              message: too many requests
+
+    BadGateway:
+      description: Bad Gateway - Ошибка LLM провайдера
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: provider_failed
+              message: provider failed
+
+    InternalServerError:
+      description: Internal Server Error - Внутренняя ошибка сервера
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: internal_error
+              message: internal server error
+
+tags:
+  - name: System
+    description: Endpoints для проверки здоровья и готовности сервиса
+  - name: Drafts
+    description: Endpoints для работы с черновиками идей
+

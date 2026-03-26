@@ -2,10 +2,15 @@ package server
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"time"
+
+	"ai-product-assistant/internal/handler/draft"
+	"ai-product-assistant/internal/handler/httpapi"
+	"ai-product-assistant/internal/handler/middleware"
+	"ai-product-assistant/internal/usecase"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -16,6 +21,8 @@ type Config struct {
 	WriteTimeout    time.Duration
 	IdleTimeout     time.Duration
 	ShutdownTimeout time.Duration
+	RateLimitRPM    int
+	RateLimitWindow time.Duration
 }
 
 type Server struct {
@@ -23,10 +30,28 @@ type Server struct {
 	shutdownTimeout time.Duration
 }
 
-func New(cfg Config) *Server {
+func New(cfg Config, draftService usecase.DraftService) (*Server, error) {
+	if draftService == nil {
+		return nil, errors.New("server: draft service is required")
+	}
+
 	router := chi.NewRouter()
+	rateLimiter := middleware.NewRateLimiter(cfg.RateLimitRPM, cfg.RateLimitWindow)
+	router.Use(rateLimiter.Middleware)
+
+	draftHandler, err := draft.NewHandler(draftService)
+	if err != nil {
+		return nil, err
+	}
+
 	router.Get("/health", healthHandler)
 	router.Get("/ready", readyHandler)
+	router.Route("/drafts", func(r chi.Router) {
+		r.Post("/generate", draftHandler.GenerateDraft)
+		r.Get("/", draftHandler.ListDrafts)
+		r.Get("/{id}", draftHandler.GetDraftByID)
+		r.Post("/{id}/refine", draftHandler.RefineDraft)
+	})
 
 	return &Server{
 		httpServer: &http.Server{
@@ -37,7 +62,7 @@ func New(cfg Config) *Server {
 			IdleTimeout:  cfg.IdleTimeout,
 		},
 		shutdownTimeout: cfg.ShutdownTimeout,
-	}
+	}, nil
 }
 
 func (s *Server) Start() error {
@@ -52,27 +77,15 @@ func (s *Server) Shutdown(parent context.Context) error {
 }
 
 func healthHandler(w http.ResponseWriter, _ *http.Request) {
-	if err := writeJSON(w, http.StatusOK, map[string]string{"status": "ok"}); err != nil {
+	if err := httpapi.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"}); err != nil {
 		slog.Error("write health response failed", "error", err)
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 	}
 }
 
 func readyHandler(w http.ResponseWriter, _ *http.Request) {
-	if err := writeJSON(w, http.StatusOK, map[string]string{"status": "ready"}); err != nil {
+	if err := httpapi.WriteJSON(w, http.StatusOK, map[string]string{"status": "ready"}); err != nil {
 		slog.Error("write ready response failed", "error", err)
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 	}
-}
-
-func writeJSON(w http.ResponseWriter, statusCode int, payload any) error {
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return err
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
-	_, err = w.Write(body)
-	return err
 }
